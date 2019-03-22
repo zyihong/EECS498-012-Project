@@ -14,7 +14,7 @@ import glob
 import h5py
 
 
-FOLDER_DATASET = "/out"
+FOLDER_DATASET = "/data/out"
 
 class MotionData(Dataset):
     #__depth = []
@@ -29,7 +29,7 @@ class MotionData(Dataset):
     def __init__(self, folder_dataset, transform=None):
         self.transform = transform
         # Open and load text file including the whole training data
-        with open('files.csv', mode='r') as csv_file:
+        with open('data/files.csv', mode='r') as csv_file:
             csv_reader = csv.DictReader(csv_file)
             for row in csv_reader:
                 # depth path
@@ -154,44 +154,46 @@ class MotionData(Dataset):
     def __len__(self):
         return len(self.__data)
 
-def main():
+
+def load_data():
     dset_train = MotionData(FOLDER_DATASET)
     train_loader = DataLoader(dset_train, batch_size=1, shuffle=True, num_workers=1)
     depth,flow,segm,normal,annotation,img,keypoint = next(iter(train_loader))
     print("keypoint shape",keypoint.shape)
     print('Batch shape:',depth.numpy().shape, flow.numpy().shape,img.numpy().shape)
-    frames = int(img.numpy().shape[1]/10)  
-    for i in range(frames):
-        idx = i * 10
-        image = img.numpy()[0,idx,:,:,:]
-        
-        ax0 = plt.subplot(231)
-        ax0.imshow(image)
-        # plt.show()
-        #plt.savefig('render/image%d.png'%i)
-        #print(image)
-        #plt.close()
-        joints_loc = keypoint.numpy()[0,:,:,idx]
-        print('joints shape',joints_loc.shape)
-        ax0.plot(joints_loc[0,:], 240-joints_loc[1,:], 'r+')
-        #plt.savefig('image%d.png'%f)
-        
+    # frames = int(img.numpy().shape[1]/10)
+    # for i in range(frames):
+    #     idx = i * 10
+    #     image = img.numpy()[0,idx,:,:,:]
+    #
+    #     ax0 = plt.subplot(231)
+    #     ax0.imshow(image)
+    #     # plt.show()
+    #     #plt.savefig('render/image%d.png'%i)
+    #     #print(image)
+    #     #plt.close()
+    #     joints_loc = keypoint.numpy()[0,:,:,idx]
+    #     print('joints shape',joints_loc.shape)
+    #     ax0.plot(joints_loc[0,:], 240-joints_loc[1,:], 'r+')
+    #     #plt.savefig('image%d.png'%f)
+    #
+    #
+    #
+    #     ax1 = plt.subplot(232)
+    #     ax1.imshow(depth.numpy()[0,idx,:,:])
+    #     #plt.show()
+    #     #plt.waitforbuttonpress()
+    #     #plt.savefig('render/depth%d.png'%i)
+    #     ax2 = plt.subplot(233)
+    #     ax2.imshow(segm.numpy()[0,idx,:,:])
+    #     #plt.show()
+    #     ax3 = plt.subplot(234)
+    #     ax3.imshow(flow.numpy()[0,idx,:,:,0])
+    #     ax4 = plt.subplot(235)
+    #     ax4.imshow(normal.numpy()[0,idx,:,:,:])
+    #     # plt.waitforbuttonpress()
+    #     #plt.savefig('render/segm%d.png'%i)
+    #     plt.close()
 
+    return depth,flow,segm,normal,annotation,img,keypoint
 
-        ax1 = plt.subplot(232)
-        ax1.imshow(depth.numpy()[0,idx,:,:])
-        #plt.show()
-        #plt.waitforbuttonpress()
-        #plt.savefig('render/depth%d.png'%i)
-        ax2 = plt.subplot(233)
-        ax2.imshow(segm.numpy()[0,idx,:,:])
-        #plt.show()
-        ax3 = plt.subplot(234)
-        ax3.imshow(flow.numpy()[0,idx,:,:,0])
-        ax4 = plt.subplot(235)
-        ax4.imshow(normal.numpy()[0,idx,:,:,:])
-        plt.waitforbuttonpress()
-        #plt.savefig('render/segm%d.png'%i)
-        plt.close()
-if __name__ == '__main__':
-    main()
