@@ -1,0 +1,8 @@
+.DS_Store
+.idea
+data/.DS_Store
+__pycache__
+data/out
+imageAlignedLD*
+annotations*
+aligned_images*

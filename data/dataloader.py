@@ -14,7 +14,56 @@ import glob
 import h5py
 
 
-FOLDER_DATASET = "/out"
+FOLDER_DATASET = "/data/out"
+
+
+class FacadeDataset(Dataset):
+    def __init__(self, dataset, flag, dataDir='', data_range=(0, 8), n_class=5, onehot=False):
+        self.onehot = onehot
+        # assert(flag in ['train', 'eval', 'test', 'test_dev', 'kaggle'])
+        print("load " + flag + " dataset start")
+        # print("    from: %s" % dataDir)
+        print("    range: [%d, %d)" % (data_range[0], data_range[1]))
+        imgs = dataset[0]
+        segm = dataset[1]
+        self.dataset = []
+        base = imgs[0, 0]
+        base = base.to(torch.float64)
+        for i in range(data_range[0], data_range[1]):
+            target_seg = segm[0, i]
+            target_seg.unsqueeze_(2)
+            img = torch.cat([base, target_seg], 2)
+            label = imgs[0, i]
+
+            # img = Image.open(os.path.join(dataDir,flag,'eecs442_%04d.jpg' % i))
+
+            # pngreader = png.Reader(filename=os.path.join(dataDir,flag,'eecs442_%04d.png' % i))
+            # w,h,row,info = pngreader.read()
+            # label = np.array(list(row)).astype('uint8')
+
+            # Normalize input image
+            # img = np.asarray(img).astype("f").transpose(2, 0, 1)/128.0-1.0
+            # Convert to n_class-dimensional onehot matrix
+            # label_ = np.asarray(label)
+            # label = np.zeros((n_class, img.shape[1], img.shape[2])).astype("i")
+            # for j in range(n_class):
+            #     label[j, :] = label_ == j
+            self.dataset.append((img, label))
+        print("load dataset done")
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        img, label = self.dataset[index]
+        # label = torch.FloatTensor(label)
+        # if not self.onehot:
+        #     label = torch.argmax(label, dim=0)
+        # else:
+        #     label = label.long()
+
+        return torch.FloatTensor(img), torch.LongTensor(label)
+
 
 class MotionData(Dataset):
     #__depth = []
@@ -29,7 +78,7 @@ class MotionData(Dataset):
     def __init__(self, folder_dataset, transform=None):
         self.transform = transform
         # Open and load text file including the whole training data
-        with open('files.csv', mode='r') as csv_file:
+        with open('data/files.csv', mode='r') as csv_file:
             csv_reader = csv.DictReader(csv_file)
             for row in csv_reader:
                 # depth path
@@ -110,7 +159,7 @@ class MotionData(Dataset):
             print('image',length)
             for i in range(min(data_len,length)):
                 path = glob.glob("%s/*/Image%04d.png" %(self.__img[index].split(".")[0],i))
-                print('path',path)
+                # print('path',path)
                 with Image.open(path[0]) as img_temp:
                     img_temp = img_temp.convert('RGB')
                     img_temp = np.asarray(img_temp)
@@ -154,44 +203,46 @@ class MotionData(Dataset):
     def __len__(self):
         return len(self.__data)
 
-def main():
+
+def load_data():
     dset_train = MotionData(FOLDER_DATASET)
     train_loader = DataLoader(dset_train, batch_size=1, shuffle=True, num_workers=1)
     depth,flow,segm,normal,annotation,img,keypoint = next(iter(train_loader))
     print("keypoint shape",keypoint.shape)
     print('Batch shape:',depth.numpy().shape, flow.numpy().shape,img.numpy().shape)
-    frames = int(img.numpy().shape[1]/10)  
-    for i in range(frames):
-        idx = i * 10
-        image = img.numpy()[0,idx,:,:,:]
-        
-        ax0 = plt.subplot(231)
-        ax0.imshow(image)
-        # plt.show()
-        #plt.savefig('render/image%d.png'%i)
-        #print(image)
-        #plt.close()
-        joints_loc = keypoint.numpy()[0,:,:,idx]
-        print('joints shape',joints_loc.shape)
-        ax0.plot(joints_loc[0,:], 240-joints_loc[1,:], 'r+')
-        #plt.savefig('image%d.png'%f)
-        
+    # frames = int(img.numpy().shape[1]/10)
+    # for i in range(frames):
+    #     idx = i * 10
+    #     image = img.numpy()[0,idx,:,:,:]
+    #
+    #     ax0 = plt.subplot(231)
+    #     ax0.imshow(image)
+    #     # plt.show()
+    #     #plt.savefig('render/image%d.png'%i)
+    #     #print(image)
+    #     #plt.close()
+    #     joints_loc = keypoint.numpy()[0,:,:,idx]
+    #     print('joints shape',joints_loc.shape)
+    #     ax0.plot(joints_loc[0,:], 240-joints_loc[1,:], 'r+')
+    #     #plt.savefig('image%d.png'%f)
+    #
+    #
+    #
+    #     ax1 = plt.subplot(232)
+    #     ax1.imshow(depth.numpy()[0,idx,:,:])
+    #     #plt.show()
+    #     #plt.waitforbuttonpress()
+    #     #plt.savefig('render/depth%d.png'%i)
+    #     ax2 = plt.subplot(233)
+    #     ax2.imshow(segm.numpy()[0,idx,:,:])
+    #     #plt.show()
+    #     ax3 = plt.subplot(234)
+    #     ax3.imshow(flow.numpy()[0,idx,:,:,0])
+    #     ax4 = plt.subplot(235)
+    #     ax4.imshow(normal.numpy()[0,idx,:,:,:])
+    #     # plt.waitforbuttonpress()
+    #     #plt.savefig('render/segm%d.png'%i)
+    #     plt.close()
 
+    return depth,flow,segm,normal,annotation,img,keypoint
 
-        ax1 = plt.subplot(232)
-        ax1.imshow(depth.numpy()[0,idx,:,:])
-        #plt.show()
-        #plt.waitforbuttonpress()
-        #plt.savefig('render/depth%d.png'%i)
-        ax2 = plt.subplot(233)
-        ax2.imshow(segm.numpy()[0,idx,:,:])
-        #plt.show()
-        ax3 = plt.subplot(234)
-        ax3.imshow(flow.numpy()[0,idx,:,:,0])
-        ax4 = plt.subplot(235)
-        ax4.imshow(normal.numpy()[0,idx,:,:,:])
-        plt.waitforbuttonpress()
-        #plt.savefig('render/segm%d.png'%i)
-        plt.close()
-if __name__ == '__main__':
-    main()
