@@ -34,11 +34,11 @@ class twotimes_conv(nn.Module):
 
 
 
-class Net(nn.Module):
-    def __init__(self, n_class=1):
-        super(Net, self).__init__()
+class G1_Net(nn.Module):
+    def __init__(self, n_class=3):
+        super(G1_Net, self).__init__()
         self.n_class = n_class
-        self.twoconv1=twotimes_conv(3,64)#256
+        self.twoconv1=twotimes_conv(4,64)#256
         self.maxpool=nn.MaxPool2d(2,2)#128
         self.twoconv2=twotimes_conv(64,128)#128
         # nn.MaxPool2d(2,2),#64
@@ -50,7 +50,7 @@ class Net(nn.Module):
         self.twocon4=twotimes_conv(256,128)
         self.dconv4=nn.ConvTranspose2d(128,64,stride=2,kernel_size=2)#256
         self.twocon5=twotimes_conv(128,64)
-        self.final=nn.Sequential(nn.Conv2d(64,5,1),
+        self.final=nn.Sequential(nn.Conv2d(64,self.n_class,1),
             nn.ReLU(inplace=True))
 
     def forward(self, x):
@@ -73,3 +73,4 @@ class Net(nn.Module):
         x4=self.twocon5(x4)
         x=self.final(x4)
         return x
+

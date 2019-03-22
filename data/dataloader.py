@@ -16,6 +16,55 @@ import h5py
 
 FOLDER_DATASET = "/data/out"
 
+
+class FacadeDataset(Dataset):
+    def __init__(self, dataset, flag, dataDir='', data_range=(0, 8), n_class=5, onehot=False):
+        self.onehot = onehot
+        # assert(flag in ['train', 'eval', 'test', 'test_dev', 'kaggle'])
+        print("load " + flag + " dataset start")
+        # print("    from: %s" % dataDir)
+        print("    range: [%d, %d)" % (data_range[0], data_range[1]))
+        imgs = dataset[0]
+        segm = dataset[1]
+        self.dataset = []
+        base = imgs[0, 0]
+        base = base.to(torch.float64)
+        for i in range(data_range[0], data_range[1]):
+            target_seg = segm[0, i]
+            target_seg.unsqueeze_(2)
+            img = torch.cat([base, target_seg], 2)
+            label = imgs[0, i]
+
+            # img = Image.open(os.path.join(dataDir,flag,'eecs442_%04d.jpg' % i))
+
+            # pngreader = png.Reader(filename=os.path.join(dataDir,flag,'eecs442_%04d.png' % i))
+            # w,h,row,info = pngreader.read()
+            # label = np.array(list(row)).astype('uint8')
+
+            # Normalize input image
+            # img = np.asarray(img).astype("f").transpose(2, 0, 1)/128.0-1.0
+            # Convert to n_class-dimensional onehot matrix
+            # label_ = np.asarray(label)
+            # label = np.zeros((n_class, img.shape[1], img.shape[2])).astype("i")
+            # for j in range(n_class):
+            #     label[j, :] = label_ == j
+            self.dataset.append((img, label))
+        print("load dataset done")
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        img, label = self.dataset[index]
+        # label = torch.FloatTensor(label)
+        # if not self.onehot:
+        #     label = torch.argmax(label, dim=0)
+        # else:
+        #     label = label.long()
+
+        return torch.FloatTensor(img), torch.LongTensor(label)
+
+
 class MotionData(Dataset):
     #__depth = []
     #__flow = []
@@ -110,7 +159,7 @@ class MotionData(Dataset):
             print('image',length)
             for i in range(min(data_len,length)):
                 path = glob.glob("%s/*/Image%04d.png" %(self.__img[index].split(".")[0],i))
-                print('path',path)
+                # print('path',path)
                 with Image.open(path[0]) as img_temp:
                     img_temp = img_temp.convert('RGB')
                     img_temp = np.asarray(img_temp)
