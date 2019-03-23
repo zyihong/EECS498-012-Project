@@ -1,2 +1,2 @@
-data,annotation,img,keypoint
-data/out/run0/0_c0001_data.h5,data/out/run0/0_annotations.json,data/out/run0/0_c0001.mp4.tar.gz,data/out/run0/0_c0001_info.h5
+data,annotation,img,keypoint
+data\out/run0\0_c0001_data.h5,data\out/run0\0_annotations.json,data\out/run0\0_c0001.mp4.tar.gz,data\out/run0\0_c0001_info.h5
