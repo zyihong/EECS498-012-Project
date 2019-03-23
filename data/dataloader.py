@@ -28,13 +28,21 @@ class FacadeDataset(Dataset):
         segm = dataset[1]
         self.dataset = []
         base = imgs[0, 0]
-        base = base.to(torch.float64)
+        base = base.to(torch.float32)
         for i in range(data_range[0], data_range[1]):
             target_seg = segm[0, i]
+            target_seg = target_seg.to(torch.float32)
+            zeros = torch.zeros(target_seg.shape)
+            ones = torch.ones(target_seg.shape)
+            mask = torch.where(target_seg > 0, ones, zeros)
+            mask.unsqueeze_(2)
             target_seg.unsqueeze_(2)
-            img = torch.cat([base, target_seg], 2)
+            img = torch.cat((base, target_seg*100.0), 2)
+            img=img.permute(2,0,1)
             label = imgs[0, i]
-
+            label=label.permute(2,0,1)
+            mask = torch.cat((mask, mask, mask), 2)
+            mask = mask.permute(2,0,1)
             # img = Image.open(os.path.join(dataDir,flag,'eecs442_%04d.jpg' % i))
 
             # pngreader = png.Reader(filename=os.path.join(dataDir,flag,'eecs442_%04d.png' % i))
@@ -48,21 +56,21 @@ class FacadeDataset(Dataset):
             # label = np.zeros((n_class, img.shape[1], img.shape[2])).astype("i")
             # for j in range(n_class):
             #     label[j, :] = label_ == j
-            self.dataset.append((img, label))
+            self.dataset.append((img, label, mask))
         print("load dataset done")
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, index):
-        img, label = self.dataset[index]
+        img, label, mask = self.dataset[index]
         # label = torch.FloatTensor(label)
         # if not self.onehot:
         #     label = torch.argmax(label, dim=0)
         # else:
         #     label = label.long()
 
-        return torch.FloatTensor(img), torch.LongTensor(label)
+        return img.to(dtype=torch.float32), label.to(dtype=torch.float32), mask.to(dtype=torch.float32)
 
 
 class MotionData(Dataset):
@@ -206,7 +214,7 @@ class MotionData(Dataset):
 
 def load_data():
     dset_train = MotionData(FOLDER_DATASET)
-    train_loader = DataLoader(dset_train, batch_size=1, shuffle=True, num_workers=1)
+    train_loader = DataLoader(dset_train, batch_size=1, shuffle=True, num_workers=0)
     depth,flow,segm,normal,annotation,img,keypoint = next(iter(train_loader))
     print("keypoint shape",keypoint.shape)
     print('Batch shape:',depth.numpy().shape, flow.numpy().shape,img.numpy().shape)
