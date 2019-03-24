@@ -84,60 +84,61 @@ class G2_Net(nn.Module):
         #input size (6,256,256)
         self.conv1 = nn.Sequential(
             nn.Conv2d(6,32,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(32,32,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.AvgPool2d(3,stride=2,padding=1))
         #(3,128,128)
         
         self.conv2 = nn.Sequential(
             nn.Conv2d(32,64,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(64,64,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.AvgPool2d(3,stride=2,padding=1))
         #(64,64,64)
         self.conv3 = nn.Sequential(
             nn.Conv2d(64,128,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(128,128,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.AvgPool2d(3,stride=2,padding=1))
         #(128,32,32)
         self.conv4 = nn.Sequential(
             nn.Conv2d(128,256,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(256,256,kernel_size,stride = 1, padding=1),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.AvgPool2d(3,stride=2,padding=1))
         #(256,16,16)
         self.deconv4 = nn.Sequential(
             nn.ConvTranspose2d(256,128,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(128,128,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Upsample(scale_factor=2, mode='bilinear'))
         #(128,32,32)
         self.deconv3 = nn.Sequential(
             nn.ConvTranspose2d(256,64,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(64,64,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Upsample(scale_factor=2, mode='bilinear'))
         #(64,64,64)
         self.deconv2 = nn.Sequential(
             nn.ConvTranspose2d(128,32,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(32,32,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Upsample(scale_factor=2, mode='bilinear'))
         #(3,256,256)
         self.deconv1 = nn.Sequential(
             nn.ConvTranspose2d(64,3,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
+            nn.ReLU(),
             nn.Conv2d(3,3,kernel_size,stride = 1, padding=2),
-            nn.LeakyReLU(),
-            nn.Upsample(scale_factor=2, mode='bilinear'))
+            nn.ReLU(),
+            nn.Upsample(scale_factor=2, mode='bilinear'),
+            nn.Tanh())
         
     def forward(self,inputs):
         e1 = self.conv1(inputs)
