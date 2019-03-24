@@ -11,15 +11,16 @@ def train_G1(trainloader, net, criterion, optimizer, device, epoch):
     start = time.time()
     running_loss = 0.0
     net = net.train()
-    for images, labels, mask in tqdm(trainloader):
+    for images, labels, mask, base_mask in tqdm(trainloader):
         images = images.to(device)
         # plt.imshow(images[4,-1].cpu().numpy().astype('uint8'))
         # plt.show()
         labels = labels.to(device)
         mask = mask.to(device)
+        base_mask=base_mask.to(device)
         optimizer.zero_grad()
         output = net(images)
-        loss = criterion(output*mask, labels*mask)
+        loss = criterion(output*base_mask*20,labels*base_mask*20)+criterion(output*mask*9,labels*mask*9)+criterion(output*6,labels*6)
         loss.backward()
         optimizer.step()
         running_loss = loss.item()
@@ -36,13 +37,13 @@ def test_G1(testloader, net, criterion, device):
     cnt = 0
     with torch.no_grad():
         net = net.eval()
-        for images, labels, mask in tqdm(testloader):
+        for images, labels, mask, base_mask in tqdm(testloader):
             images = images.to(device)
             labels = labels.to(device)
             mask = mask.to(device)
             output = net(images)
 
-            loss = criterion(output * mask, labels * mask)
+            loss = criterion(output * mask, labels * mask)+criterion(output,labels)
             losses += loss.item()
             cnt += 1
     print(losses / cnt)
@@ -63,9 +64,9 @@ def test_G1(testloader, net, criterion, device):
 def generator1(device):
 
     depth, flow, segm, normal, annotation, img, keypoint = load_data()
-    train_data = FacadeDataset(dataset=(img, segm), flag='train', data_range=(50, 110), onehot=False)
+    train_data = FacadeDataset(dataset=(img, segm), flag='train', data_range=(75, 125), onehot=False)
     train_loader = DataLoader(train_data, batch_size=5,shuffle=True)
-    test_data = FacadeDataset(dataset=(img, segm), flag='test', data_range=(110, 125), onehot=False)
+    test_data = FacadeDataset(dataset=(img, segm), flag='test', data_range=(50, 75), onehot=False)
     test_loader = DataLoader(test_data, batch_size=1,shuffle=True)
     net = G1_Net().to(device)
 
@@ -73,7 +74,7 @@ def generator1(device):
     optimizer = torch.optim.Adam(net.parameters(), 1e-3, weight_decay=0)
 
     print('\nStart training generator1')
-    for epoch in range(20):  # TODO decide epochs
+    for epoch in range(50):  # TODO decide epochs
         print('-----------------Epoch = %d-----------------' % (epoch + 1))
         train_G1(train_loader, net, criterion, optimizer, device, epoch + 1)
         # TODO create your evaluation set, load the evaluation set and test on evaluation set
