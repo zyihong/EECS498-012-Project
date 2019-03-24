@@ -55,8 +55,8 @@ def train(trainloader, generator_one,generator_two,discriminator, L1_criterion,
         D_z_neg = torch.cat([D_z_neg_g2, D_z_neg_x], 0)
         
         #Generator 2 loss
-        #g2_loss = BCE_criterion(D_z_neg, torch.ones((2)).cuda())
-        g2_loss = BCE_criterion(D_z_neg, torch.ones((10))) #2*batch size
+        g2_loss = BCE_criterion(D_z_neg, torch.ones((10,1)).cuda())
+        #g2_loss = BCE_criterion(D_z_neg, torch.ones((10))) #2*batch size
         PoseMaskLoss2 = L1_criterion(G2 * mask, labels * mask)
         L1Loss2 = L1_criterion(G2, labels) + PoseMaskLoss2
         g2_loss += 50*L1Loss2
@@ -67,10 +67,10 @@ def train(trainloader, generator_one,generator_two,discriminator, L1_criterion,
         gen_train_op2.step()
 
         #discriminator loss
-        #d_loss = BCE_criterion(D_z_pos, torch.ones((1)).cuda())
-        #d_loss += BCE_criterion(D_z_neg, torch.zeros((2)).cuda())
-        d_loss = BCE_criterion(D_z_pos, torch.ones((5)))
-        d_loss += BCE_criterion(D_z_neg, torch.zeros((10)))
+        d_loss = BCE_criterion(D_z_pos, torch.ones((5,1)).cuda())
+        d_loss += BCE_criterion(D_z_neg, torch.zeros((10,1)).cuda())
+        #d_loss = BCE_criterion(D_z_pos, torch.ones((5)))
+        #d_loss += BCE_criterion(D_z_neg, torch.zeros((10)))
         d_loss /= 2
 
         dis_train_op1.zero_grad()
@@ -85,21 +85,26 @@ def train(trainloader, generator_one,generator_two,discriminator, L1_criterion,
           (epoch, g1_running_loss,g2_running_loss,d_running_loss, end-start))
 
 
-def test_G1(testloader, net, criterion, device):
+def test_G1(testloader, generator_one,generator_two,discriminator, L1_criterion, 
+    BCE_criterion,gen_train_op1,gen_train_op2,dis_train_op1, device):
     '''
     Function for testing.
     '''
     losses = 0.
     cnt = 0
     with torch.no_grad():
-        net = net.eval()
-        for images, labels, mask, base_mask in tqdm(testloader):
-            images = images.to(device)
+        net = generator_one.eval()
+        for step,(base_img,target_seg, labels, mask, base_mask) in enumerate(testloader):
+            base_img = base_img.to(device)
+            target_seg = target_seg.to(device)
             labels = labels.to(device)
             mask = mask.to(device)
+            base_mask = base_mask.to(device)
+
+            images=torch.cat((base_img, target_seg*100.0), 1)
             output = net(images)
 
-            loss = criterion(output * mask, labels * mask)+criterion(output,labels)
+            loss = L1_criterion(output * mask, labels * mask)+L1_criterion(output,labels)
             losses += loss.item()
             cnt += 1
     print(losses / cnt)
@@ -116,6 +121,55 @@ def test_G1(testloader, net, criterion, device):
     plt.show()
     return (losses/cnt)
 
+def test_G2(testloader, generator_one,generator_two,discriminator, L1_criterion, 
+    BCE_criterion,gen_train_op1,gen_train_op2,dis_train_op1, device):
+    losses = 0.
+    cnt = 0
+    with torch.no_grad():
+        generator_one = generator_one.eval()
+        generator_two = generator_two.eval()
+        discriminator = discriminator.eval()
+
+        for step,(base_img,target_seg, labels, mask, base_mask) in enumerate(testloader):
+            base_img = base_img.to(device)
+            target_seg = target_seg.to(device)
+            labels = labels.to(device)
+            mask = mask.to(device)
+            base_mask = base_mask.to(device)
+            
+            images=torch.cat((base_img, target_seg*100.0), 1)
+            G1 = generator_one(images)
+
+            DiffMap = generator_two(torch.cat((G1, base_img), 1))
+            G2 = G1 + DiffMap
+
+            triplet = torch.cat([labels, G2, base_img], dim=0)
+            D_z = discriminator(triplet)
+            D_z = torch.clamp(D_z, 0.0, 1.0)
+            #print('DZ',D_z.size())
+            D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(D_z,5) #batch size
+            D_z_neg = torch.cat([D_z_neg_g2, D_z_neg_x], 0)
+
+            g2_loss = BCE_criterion(D_z_neg, torch.ones((10))) #2*batch size
+            PoseMaskLoss2 = L1_criterion(G2 * mask, labels * mask)
+            L1Loss2 = L1_criterion(G2, labels) + PoseMaskLoss2
+            g2_loss += 50*L1Loss2
+            
+            losses += g2_loss.item()
+            cnt += 1
+    print(losses / cnt)
+    image=G2[0].permute(1, 2, 0).cpu().numpy()
+    if np.min(image)<0:
+        image -= np.min(image)
+    image/=np.max(image)
+    image*=255
+    image=image.astype('uint8')
+    plt.imshow(image)
+    plt.show()
+    image = labels[0].permute(1, 2, 0).cpu().numpy()
+    plt.imshow(image.astype('uint8'))
+    plt.show()
+    return (losses/cnt)
 
 def generator(device):
 
@@ -142,13 +196,16 @@ def generator(device):
     dis_train_op1 = optim.Adam(discriminator.parameters(), lr=1e-3, betas=(0.5, 0.999))
 
     print('\nStart training generator1')
-    for epoch in range(50):  # TODO decide epochs
+    for epoch in range(30):  # TODO decide epochs
         print('-----------------Epoch = %d-----------------' % (epoch + 1))
-        train(train_loader, generator_one,generator_two,discriminator,
-            L1_criterion, BCE_criterion, gen_train_op1,gen_train_op2,dis_train_op1, device, epoch + 1)
+        #train(train_loader, generator_one,generator_two,discriminator,
+        #    L1_criterion, BCE_criterion, gen_train_op1,gen_train_op2,dis_train_op1, device, epoch + 1)
         # TODO create your evaluation set, load the evaluation set and test on evaluation set
-        #evaluation_loader = train_loader
-        #test_G1(evaluation_loader, net, criterion, device)
+        evaluation_loader = train_loader
+        test_G1(evaluation_loader, generator_one,generator_two,discriminator, L1_criterion, 
+            BCE_criterion,gen_train_op1,gen_train_op2,dis_train_op1, device)
+        test_G2(evaluation_loader, generator_one,generator_two,discriminator, L1_criterion, 
+            BCE_criterion,gen_train_op1,gen_train_op2,dis_train_op1, device)
 
     #test_G1(test_loader, net, criterion, device)
 
