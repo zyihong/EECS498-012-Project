@@ -4,16 +4,19 @@ import time
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import png
+#import png
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
-from colormap.colors import Color, hex2rgb
+#from colormap.colors import Color, hex2rgb
 from sklearn.metrics import average_precision_score as ap_score
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 from tqdm import tqdm
+
+from torch.autograd import Variable
+import torch.nn.functional as F
 
 
 

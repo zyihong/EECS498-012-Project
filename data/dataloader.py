@@ -29,19 +29,27 @@ class FacadeDataset(Dataset):
         self.dataset = []
         base = imgs[0, 0]
         base = base.to(torch.float32)
+        base_img = base.permute(2,0,1)
         for i in range(data_range[0], data_range[1]):
             target_seg = segm[0, i]
             target_seg = target_seg.to(torch.float32)
+            
+            #target_seg = target_seg.view(1,target_seg.size()[0],-1)
+            
+            #target_seg = target_seg.permute(2,0,1)
             zeros = torch.zeros(target_seg.shape)
             ones = torch.ones(target_seg.shape)
             mask = torch.where(target_seg > 0, ones, zeros)
             mask.unsqueeze_(2)
             target_seg.unsqueeze_(2)
-            img = torch.cat((base, target_seg*100.0), 2)
-            img=img.permute(2,0,1)
+            target_seg = target_seg.permute(2,0,1)
+            #print('target_seg size',target_seg.size())
+            #img = torch.cat((base, target_seg*100.0), 2)
+            #img=img.permute(2,0,1)
             label = imgs[0, i]
             label=label.permute(2,0,1)
             mask = torch.cat((mask, mask, mask), 2)
+            #print('mask size',mask.size())
             mask = mask.permute(2,0,1)
 
             base_seg = segm[0, 0]
@@ -65,21 +73,21 @@ class FacadeDataset(Dataset):
             # label = np.zeros((n_class, img.shape[1], img.shape[2])).astype("i")
             # for j in range(n_class):
             #     label[j, :] = label_ == j
-            self.dataset.append((img, label, mask, base_mask))
+            self.dataset.append((base_img,target_seg,label, mask, base_mask))
         print("load dataset done")
 
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, index):
-        img, label, mask, base_mask = self.dataset[index]
+        base_img,img, label, mask, base_mask = self.dataset[index]
         # label = torch.FloatTensor(label)
         # if not self.onehot:
         #     label = torch.argmax(label, dim=0)
         # else:
         #     label = label.long()
 
-        return img.to(dtype=torch.float32), label.to(dtype=torch.float32), mask.to(dtype=torch.float32), base_mask.to(dtype=torch.float32)
+        return base_img.to(dtype=torch.float32),img.to(dtype=torch.float32), label.to(dtype=torch.float32), mask.to(dtype=torch.float32), base_mask.to(dtype=torch.float32)
 
 
 class MotionData(Dataset):
