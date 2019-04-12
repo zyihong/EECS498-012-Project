@@ -2,7 +2,7 @@ from data.dataloader import load_data, FacadeDataset
 from models import *
 from matplotlib import pyplot as plt
 import numpy as np
-
+from tqdm import tqdm
 
 def train(trainloader, generator_one,generator_two,discriminator, L1_criterion, 
     BCE_criterion,gen_train_op1,gen_train_op2,dis_train_op1, device, epoch):
@@ -14,7 +14,7 @@ def train(trainloader, generator_one,generator_two,discriminator, L1_criterion,
     generator_one = generator_one.train()
     generator_two = generator_two.train()
     discriminator = discriminator.train()
-    for step,(base_img,target_seg, labels, mask, base_mask) in enumerate(trainloader):
+    for step,(base_img,target_seg, labels, mask, base_mask) in enumerate(tqdm(trainloader)):
         #base_img = conditional image(IA) labels = target_image(IB) target_seg = pose_target(IB')
         base_img = base_img.to(device)
         target_seg = target_seg.to(device)
@@ -30,14 +30,14 @@ def train(trainloader, generator_one,generator_two,discriminator, L1_criterion,
 
 
         #print sizes 
-        print('base img', base_img.size())
-        print('target seg', target_seg.size())
-        print('labels',labels.size())
+        # print('base img', base_img.size())
+        # print('target seg', target_seg.size())
+        # print('labels',labels.size())
         #Generator 1
         images=torch.cat((base_img, target_seg*100.0), 1)
         G1 = generator_one(images)
 
-        g1_loss = L1_criterion(G1*base_mask*20,labels*base_mask*20)+L1_criterion(G1*mask*9,labels*mask*9)+L1_criterion(G1*6,labels*6)
+        g1_loss = L1_criterion(G1*base_mask*20,labels*base_mask*20)+L1_criterion(G1*mask*9,labels*mask*9)+L1_criterion(G1*1,labels*1)
         g1_loss.backward(retain_graph=True)
         gen_train_op1.step()
 
@@ -49,13 +49,13 @@ def train(trainloader, generator_one,generator_two,discriminator, L1_criterion,
         triplet = torch.cat([labels, G2, base_img], dim=0)
         D_z = discriminator(triplet)
         D_z = torch.clamp(D_z, 0.0, 1.0)
-        print('DZ',D_z.size())
-        D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(D_z,5) #batch size
+        # print('DZ',D_z.size())
+        D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(D_z,2) #batch size
         D_z_pos = D_z_pos_x_target
         D_z_neg = torch.cat([D_z_neg_g2, D_z_neg_x], 0)
         
         #Generator 2 loss
-        g2_loss = BCE_criterion(D_z_neg, torch.ones((10,1)).cuda())
+        g2_loss = BCE_criterion(D_z_neg, torch.ones((4,1)).cuda())
         #g2_loss = BCE_criterion(D_z_neg, torch.ones((10))) #2*batch size
         PoseMaskLoss2 = L1_criterion(G2 * mask, labels * mask)
         L1Loss2 = L1_criterion(G2, labels) + PoseMaskLoss2
@@ -67,8 +67,8 @@ def train(trainloader, generator_one,generator_two,discriminator, L1_criterion,
         gen_train_op2.step()
 
         #discriminator loss
-        d_loss = BCE_criterion(D_z_pos, torch.ones((5,1)).cuda())
-        d_loss += BCE_criterion(D_z_neg, torch.zeros((10,1)).cuda())
+        d_loss = BCE_criterion(D_z_pos, torch.ones((2,1)).cuda())
+        d_loss += BCE_criterion(D_z_neg, torch.zeros((4,1)).cuda())
         #d_loss = BCE_criterion(D_z_pos, torch.ones((5)))
         #d_loss += BCE_criterion(D_z_neg, torch.zeros((10)))
         d_loss /= 2
@@ -147,10 +147,10 @@ def test_G2(testloader, generator_one,generator_two,discriminator, L1_criterion,
             D_z = discriminator(triplet)
             D_z = torch.clamp(D_z, 0.0, 1.0)
             #print('DZ',D_z.size())
-            D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(D_z,5) #batch size
+            D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(D_z,2) #batch size
             D_z_neg = torch.cat([D_z_neg_g2, D_z_neg_x], 0)
 
-            g2_loss = BCE_criterion(D_z_neg, torch.ones((10))) #2*batch size
+            g2_loss = BCE_criterion(D_z_neg, torch.ones((4,1)).to(device=device)) #2*batch size
             PoseMaskLoss2 = L1_criterion(G2 * mask, labels * mask)
             L1Loss2 = L1_criterion(G2, labels) + PoseMaskLoss2
             g2_loss += 50*L1Loss2
@@ -175,7 +175,7 @@ def generator(device):
 
     depth, flow, segm, normal, annotation, img, keypoint = load_data()
     train_data = FacadeDataset(dataset=(img, segm), flag='train', data_range=(75, 125), onehot=False)
-    train_loader = DataLoader(train_data, batch_size=5,shuffle=True)
+    train_loader = DataLoader(train_data, batch_size=2,shuffle=True)
     test_data = FacadeDataset(dataset=(img, segm), flag='test', data_range=(50, 75), onehot=False)
     test_loader = DataLoader(test_data, batch_size=1,shuffle=True)
     
@@ -196,10 +196,10 @@ def generator(device):
     dis_train_op1 = optim.Adam(discriminator.parameters(), lr=1e-3, betas=(0.5, 0.999))
 
     print('\nStart training generator1')
-    for epoch in range(30):  # TODO decide epochs
+    for epoch in range(50):  # TODO decide epochs
         print('-----------------Epoch = %d-----------------' % (epoch + 1))
-        #train(train_loader, generator_one,generator_two,discriminator,
-        #    L1_criterion, BCE_criterion, gen_train_op1,gen_train_op2,dis_train_op1, device, epoch + 1)
+        train(train_loader, generator_one,generator_two,discriminator,
+            L1_criterion, BCE_criterion, gen_train_op1,gen_train_op2,dis_train_op1, device, epoch + 1)
         # TODO create your evaluation set, load the evaluation set and test on evaluation set
         evaluation_loader = train_loader
         test_G1(evaluation_loader, generator_one,generator_two,discriminator, L1_criterion, 
