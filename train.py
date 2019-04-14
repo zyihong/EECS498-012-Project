@@ -45,7 +45,7 @@ def train(trainloader, generator_one, generator_two, discriminator, L1_criterion
         images=torch.cat((base_img, target_seg*100.0), 1)
         G1 = generator_one(images)
 
-        g1_loss = L1_criterion(G1*base_mask*20, labels*base_mask*20)+L1_criterion(G1*mask*9,labels*mask*9)+L1_criterion(G1*1,labels*1)
+        g1_loss = L1_criterion(G1*base_mask*20, labels*base_mask*20)+L1_criterion(G1*mask*6,labels*mask*6)+L1_criterion(G1*1,labels*1)
         g1_loss.backward(retain_graph=True)
         gen_train_op1.step()
 
