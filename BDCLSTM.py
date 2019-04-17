@@ -7,11 +7,24 @@
 import torch.nn as nn
 from torch.autograd import Variable
 import torch
+from data.dataloader import load_data, FacadeDataset
+import numpy as np
+import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import torch.optim as optim
 
 
 # In[3]:
+
+#test BDCLSTM
+batch_size = 1
+T = 20
+H,W = 240,320
+input_dim = 1
+hidden_dim = 1
+EPOCH = 10
+PRINT_EVERY = 2
+LEARNING_RATE = 1e-2
 
 
 class ConvLSTMCell(nn.Module):
@@ -231,14 +244,14 @@ class BDClstm(nn.Module):
         forward_c_out = forward_c_out[0]
         #invert input_tensor along time step
         idx = [i for i in range(input_tensor.size(1)-1,-1,-1)]
-        print(len(idx))
+        # print(len(idx))
         idx = torch.LongTensor(idx)
         inverted_tensor = input_tensor.index_select(1,idx)
         
         backward_h_out,backward_c_out = self.backward_lstm(inverted_tensor, backward_initial_states)
         backward_h_out = backward_h_out[0]
         backward_c_out = backward_c_out[0]
-        print("backward_h_out size", backward_h_out.size())
+        # print("backward_h_out size", backward_h_out.size())
         #invert output back to T=0,1,2,3...
         inverted_h_out = backward_h_out.index_select(1,idx)
         
@@ -262,12 +275,7 @@ class BDClstm(nn.Module):
 # In[25]:
 
 
-#test BDCLSTM
-batch_size = 10
-T = 20
-H,W = 240,320
-input_dim = 3
-hidden_dim = 3
+
 
 '''
 Example:
@@ -278,23 +286,128 @@ backward_initial_states: list of (initial backward h, initial backward c), defau
 
 
 '''
-#train
-input_tensor = torch.rand(batch_size,T,input_dim,H,W)
-
-#test
-#input_tensor = None
 
 
-forward_initial_states = []
-forward_initial_state = (torch.rand(batch_size,hidden_dim,H,W), torch.zeros(batch_size,hidden_dim,H,W))
-forward_initial_states.append(forward_initial_state)
-backward_initial_states = []
-backward_initial_state = (torch.rand(batch_size,hidden_dim,H,W), torch.zeros(batch_size,hidden_dim,H,W))
-backward_initial_states.append(backward_initial_state)
+def split_T(input):
+    num = input.shape[1]
+    shuffle = np.arange(num)
+    np.random.shuffle(shuffle)
 
-model = BDClstm((H,W), input_dim, hidden_dim)
+    data_set = []
+    it_nums = int(np.ceil(num / T))
 
-h_out,forward_c_out,backward_c_out = model.forward(T,input_tensor,forward_initial_states,backward_initial_states,True)
+    for i in range(it_nums):
+        data_set.append((input[:, shuffle[i * T:(i + 1) * T], :, :, :], input[:, shuffle[i * T:(i + 1) * T], :, :, :]))
 
-print(h_out.size(), forward_c_out.size(), backward_c_out.size())
+    return data_set
 
+
+def test(testloader, model, device):
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for data in testloader:
+            test_data, labels = data
+            test_data = test_data.to(device)
+            labels = labels.to(device)
+
+            forward_initial_states = []
+            forward_initial_state = (
+            torch.rand(batch_size, hidden_dim, H, W).to(device), torch.zeros(batch_size, hidden_dim, H, W).to(device))
+            forward_initial_states.append(forward_initial_state)
+            backward_initial_states = []
+            backward_initial_state = (
+            torch.rand(batch_size, hidden_dim, H, W).to(device), torch.zeros(batch_size, hidden_dim, H, W).to(device))
+            backward_initial_states.append(backward_initial_state)
+            h_out, forward_c_out, backward_c_out = model.forward(T, test_data, forward_initial_states, backward_initial_states, True)
+
+            total += torch.prod(torch.tensor(labels.shape))
+            correct += (h_out == labels).sum().item()
+
+    return 100 * correct / total
+
+
+def train(trainloader, model, criterion, optimizer, device, devloader):
+    for epoch in range(EPOCH):
+        running_loss = 0.0
+        for i, (data, labels) in enumerate(trainloader):
+            data = data.to(device)
+            labels = labels.to(device)
+
+            forward_initial_states = []
+            forward_initial_state = (torch.rand(batch_size, hidden_dim, H, W).to(device), torch.zeros(batch_size, hidden_dim, H, W).to(device))
+            forward_initial_states.append(forward_initial_state)
+            backward_initial_states = []
+            backward_initial_state = (torch.rand(batch_size, hidden_dim, H, W).to(device), torch.zeros(batch_size, hidden_dim, H, W).to(device))
+            backward_initial_states.append(backward_initial_state)
+
+            optimizer.zero_grad()
+            h_out, forward_c_out, backward_c_out = model.forward(T, data, forward_initial_states, backward_initial_states, True)
+            loss = criterion(h_out, labels)
+            loss.backward()
+            optimizer.step()
+
+            running_loss += loss.item()
+            if i % PRINT_EVERY == (PRINT_EVERY - 1):
+                dev_acc = test(devloader, model, device)
+                print('[epoch %d, iter %5d] loss: %.3f, dev acc: %.3f %%' %
+                      (epoch + 1, i + 1, running_loss / PRINT_EVERY, dev_acc))
+                running_loss = 0.0
+    print('Finished Training')
+
+
+def predict(img, num_of_pred, device, model):
+    cur_img = img
+    pred_img = None
+
+    for i in range(num_of_pred):
+        cur_img = cur_img.to(device)
+
+        forward_initial_states = []
+        forward_initial_state = (
+        torch.rand(batch_size, hidden_dim, H, W).to(device), torch.zeros(batch_size, hidden_dim, H, W).to(device))
+        forward_initial_states.append(forward_initial_state)
+        backward_initial_states = []
+        backward_initial_state = (
+        torch.rand(batch_size, hidden_dim, H, W).to(device), torch.zeros(batch_size, hidden_dim, H, W).to(device))
+        backward_initial_states.append(backward_initial_state)
+
+        h_out, forward_c_out, backward_c_out = model.forward(T, cur_img, forward_initial_states, backward_initial_states, True)
+
+        pred_img = h_out
+
+        plt.imshow(pred_img[0, 0, 0, :, :].data.cpu().numpy())
+        plt.show()
+
+        cur_img = pred_img
+
+
+def main():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # input_tensor = torch.rand(batch_size,T,input_dim,H,W)
+
+    depth, flow, segm, normal, annotation, img, keypoint = load_data()
+
+    segm = segm.to(dtype=torch.float32)
+
+    segm.unsqueeze_(2)
+    segm = segm[:, :120, :, :, :]
+    # print(segm.shape)
+    segm_predict_train_loader = split_T(segm)
+    segm_predict_validation_loader = split_T(segm)
+    # segm_predict_test_loader = split_T(segm[:, :120, :, :, :])
+
+    model = BDClstm((H, W), input_dim, hidden_dim)
+    criterion = nn.L1Loss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+
+    train(segm_predict_train_loader, model, criterion, optimizer, device, segm_predict_validation_loader)
+
+    num_of_pred = segm.shape[1]
+
+    predict(segm[:, :1, :, :, :], num_of_pred, device, model)
+
+
+if __name__ == '__main__':
+    main()
