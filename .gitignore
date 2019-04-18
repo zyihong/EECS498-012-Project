@@ -7,3 +7,4 @@ imageAlignedLD*
 annotations*
 aligned_images*
 *.jpg
+data/files.csv

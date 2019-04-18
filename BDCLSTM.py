@@ -18,13 +18,13 @@ import torch.optim as optim
 
 #test BDCLSTM
 batch_size = 1
-T = 20
+T = 10
 H,W = 240,320
 input_dim = 1
 hidden_dim = 1
-EPOCH = 10
-PRINT_EVERY = 2
-LEARNING_RATE = 1e-2
+EPOCH = 5
+PRINT_EVERY = 4
+LEARNING_RATE = 1e-3
 
 
 class ConvLSTMCell(nn.Module):
@@ -263,8 +263,17 @@ class BDClstm(nn.Module):
         #(N*T,hidden_dim,H,W)
         
         h_out = h_out.view(N,-1,hidden_dim,H,W)
+
+        pred_img = torch.abs(h_out)  # .data > 0.5) * 1.0  # .float()
+
+        # .to(dtype=torch.float64)
+        avg = torch.mean(pred_img) * 1.015
+
+        zeros = torch.zeros(pred_img.shape)
+        # ones = torch.ones(plot_img.shape)
+        out_img = torch.where(pred_img > avg, pred_img, zeros)
         
-        return h_out,forward_c_out,backward_c_out
+        return out_img,forward_c_out,backward_c_out
         
                               
                               
@@ -376,10 +385,22 @@ def predict(img, num_of_pred, device, model):
 
         pred_img = h_out
 
-        plt.imshow(pred_img[0, 0, 0, :, :].data.cpu().numpy())
+        # pred_img = torch.abs(h_out)  # .data > 0.5) * 1.0  # .float()
+        #
+        #   # .to(dtype=torch.float64)
+        # avg = torch.mean(pred_img)/3
+        #
+        # zeros = torch.zeros(pred_img.shape)
+        # # ones = torch.ones(plot_img.shape)
+        # plot_image = torch.where(pred_img > avg, pred_img, zeros)
+
+        plot_img = pred_img[0, 0, 0, :, :]
+        plt.imshow(plot_img.data.cpu().numpy())
+
+        # plt.imshow(pred_img[0, 0, 0, :, :].data.cpu().numpy())
         plt.show()
 
-        cur_img = pred_img
+        cur_img = pred_img  # pred_img  # .float()
 
 
 def main():
@@ -389,7 +410,12 @@ def main():
 
     depth, flow, segm, normal, annotation, img, keypoint = load_data()
 
+    # plt.imshow(segm[0, 0, :, :])
+    # plt.show()
+
     segm = segm.to(dtype=torch.float32)
+
+    # temp = segm[0, 0, :, :].data.cpu().numpy()
 
     segm.unsqueeze_(2)
     segm = segm[:, :120, :, :, :]
