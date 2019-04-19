@@ -22,9 +22,10 @@ T = 10
 H,W = 240,320
 input_dim = 1
 hidden_dim = 1
-EPOCH = 5
+EPOCH = 50
 PRINT_EVERY = 4
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 2e-4
+TRAINING_SET_NUM = 121
 
 
 class ConvLSTMCell(nn.Module):
@@ -267,7 +268,7 @@ class BDClstm(nn.Module):
         pred_img = torch.abs(h_out)  # .data > 0.5) * 1.0  # .float()
 
         # .to(dtype=torch.float64)
-        avg = torch.mean(pred_img) * 1.015
+        avg = torch.mean(pred_img) * 1.01
 
         zeros = torch.zeros(pred_img.shape)
         # ones = torch.ones(plot_img.shape)
@@ -300,13 +301,13 @@ backward_initial_states: list of (initial backward h, initial backward c), defau
 def split_T(input):
     num = input.shape[1]
     shuffle = np.arange(num)
-    np.random.shuffle(shuffle)
+    # np.random.shuffle(shuffle)
 
     data_set = []
-    it_nums = int(np.ceil(num / T))
+    it_nums = int(np.ceil((num - 1) / T))
 
     for i in range(it_nums):
-        data_set.append((input[:, shuffle[i * T:(i + 1) * T], :, :, :], input[:, shuffle[i * T:(i + 1) * T], :, :, :]))
+        data_set.append((input[:, shuffle[i * T:(i + 1) * T], :, :, :], input[:, shuffle[i * T + 1:(i + 1) * T + 1], :, :, :]))
 
     return data_set
 
@@ -418,7 +419,7 @@ def main():
     # temp = segm[0, 0, :, :].data.cpu().numpy()
 
     segm.unsqueeze_(2)
-    segm = segm[:, :120, :, :, :]
+    segm = segm[:, :TRAINING_SET_NUM, :, :, :]
     # print(segm.shape)
     segm_predict_train_loader = split_T(segm)
     segm_predict_validation_loader = split_T(segm)
