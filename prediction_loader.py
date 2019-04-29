@@ -18,15 +18,17 @@ import math
 from torchvision import transforms
 
 
-'''
+
 VIDEO_DATASET = "videos/reshaped.hdf5"
 SEG_PATH = "segmentation.txt"
 KEYPOINTS = "keypoints.h5"
-'''
 
+'''
 VIDEO_DATASET = "videos/reshaped.hdf5"
 SEG_PATH = "natops/data/segmentation.txt"
 KEYPOINTS = "keypoints.h5"
+'''
+FOLDER_DIR = '/home/emily/SURREAL/git_copy/surreal/video_prediction/'
 
 
 class NATOPSData(Dataset):
@@ -62,9 +64,16 @@ class NATOPSData(Dataset):
         '''
         #subject_idx = int(index/(24*20))
         #gesture_idx = int(index/20%24)
+        '''
+        numOfRepeat = int(index/(24*20))
+        subject_idx = int(index/24%20)
+        gesture_idx = int(index%24)
+        '''
+
         gesture_idx = int(index/(24*20))
         subject_idx = int(index/20%20)
         numOfRepeat = int(index%20)
+
 
         motion = np.zeros((self.data_len,64,64,3),dtype=np.uint8)
         keypoint = np.zeros((self.data_len,18))
@@ -104,4 +113,46 @@ class NATOPSData(Dataset):
     def __len__(self):
         return 20
 
+
+def main():
+    batch_size = 2
+    dset_train = NATOPSData(FOLDER_DIR+VIDEO_DATASET,FOLDER_DIR+SEG_PATH,FOLDER_DIR+KEYPOINTS)
+    train_loader = DataLoader(dset_train, batch_size, shuffle=True, num_workers=1)
+    motion_tensor, keypoint,appearance_tensor,last_frame_tensor = next(iter(train_loader))
+    
+
+    #shuffle y_a to get y_a',y_m
+    #frames = int(motion.numpy().shape[1]/10)  
+    image_first = appearance_tensor.permute(0,2,3,1).numpy()[0,:,:,:]
+    
+    plt.imshow(image_first)
+    joints_loc = keypoint.numpy()[0,0,:]
+    plt.plot(joints_loc[::2], joints_loc[1:18:2], 'r+')
+    plt.savefig('images/image_first.png')
+    plt.close()
+    image_last = last_frame_tensor.permute(0,2,3,1).numpy()[0,:,:,:]
+
+    plt.imshow(image_last)
+    joints_loc = keypoint.numpy()[0,-1,:]
+    plt.plot(joints_loc[::2], joints_loc[1:18:2], 'r+')
+    plt.savefig('images/image_last.png')
+    plt.close()
+
+    for i in range(30):
+        
+
+        # plt.show()
+        #plt.savefig('render/image%d.png'%i)
+        #print(image)
+        #plt.close()
+        joints_loc = keypoint.numpy()[0,i,:]
+        print('joints shape',joints_loc.shape)
+        plt.plot(joints_loc[::2], joints_loc[1:18:2], 'go', linewidth=2, markersize=12)
+        plt.savefig('images/keypoints%d.png'%i)
+        #plt.savefig('image%d.png'%f)
+        plt.waitforbuttonpress()
+        #plt.savefig('render/segm%d.png'%i)
+        plt.close()
+if __name__ == '__main__':
+    main()
 

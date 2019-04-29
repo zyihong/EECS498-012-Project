@@ -12,14 +12,15 @@ import time
 import os
 from torchvision.utils import save_image,make_grid
 
-MODEL_DIR = 'models/'
+MODEL_DIR = 'models-2/'
 TRAIN_DIR = '/home/emily/SURREAL/git_copy/surreal/video_prediction/'
 SAVE_STEP = 500
-GENERATOR_ONE_PATH = './models/generator_one-33-500.ckpt'
-GENERATOR_TWO_PATH = './models/generator_two-33-500.ckpt'
-DISCRIMINATOR_PATH = './models/discriminator-33-500.ckpt'
+GENERATOR_ONE_PATH = './models-2/generator_one-41-500.ckpt'
+GENERATOR_TWO_PATH = './models-2/generator_two-41-500.ckpt'
+DISCRIMINATOR_PATH = './models-2/discriminator-41-500.ckpt'
 LOAD_FROM_CHECKPOINT = True
 IMAGE_PATH = "save_images/"
+TRAIN_OR_EVAL = 'E'
 
 def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, generator_two, discriminator, L1_criterion,
     BCE_criterion, gen_train_op1, gen_train_op2, dis_train_op1, device, epoch,batch_size=10,q=18,p=128,T=10):
@@ -29,17 +30,11 @@ def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, 
     start = time.time()
     running_loss = 0.0
     
-    #base_img = conditional image(IA) labels = target_image(IB) target_seg = pose_target(IB')
     base_img = base_img.to(device)
-    #base_img = base_img.permute(0,3,1,2)
-    #base_img = base_img.type(torch.FloatTensor)
     keypoints = keypoints.type(torch.FloatTensor)
     keypoints = keypoints.to(device)
     motion_video = motion_video.to(device)
-    #motion_video = motion_video.permute(0,1,4,2,3)
-    #motion_video = motion_video.type(torch.FloatTensor)
     last_frame = last_frame.to(device)
-    #last_frame = last_frame.permute(0,3,1,2).type(torch.FloatTensor)
 
     gen_train_op1.zero_grad()
     gen_train_op2.zero_grad()
@@ -113,13 +108,14 @@ def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, 
         (epoch, g1_running_loss,g2_running_loss,d_running_loss, end-start))
     return g1_running_loss,g2_running_loss,d_running_loss,G2,G1
 
+
 def train(device):
     N =10
     T = 10
     q =18
     p=128
 
-    dset_train = NATOPSData(TRAIN_DIR+"videos/reshaped.hdf5",TRAIN_DIR+"segmentation.txt",TRAIN_DIR+"keypoints.h5")
+    dset_train = NATOPSData("videos/reshaped.hdf5","natops/data/segmentation.txt","keypoints.h5")
     train_loader = DataLoader(dset_train, batch_size=10, shuffle=True, num_workers=1)
     
     #models
@@ -143,36 +139,77 @@ def train(device):
         generator_two.load_state_dict(torch.load(GENERATOR_TWO_PATH))
         discriminator.load_state_dict(torch.load(DISCRIMINATOR_PATH))
     
-
-    writer = SummaryWriter('plots/exps-1')
+    writer = SummaryWriter('plots/exps-2')
     iteration = 0
+    if TRAIN_OR_EVAL == 'T':
+        print('\nStart training generator1')
+        for epoch in range(50):  # TODO decide epochs
+            print('-----------------Epoch = %d-----------------' % (epoch + 1))
+            generator_one = generator_one.train()
+            generator_two = generator_two.train()
+            discriminator = discriminator.train()
+            for step, (motion_video, keypoints,base_img,last_frame) in enumerate(tqdm(train_loader)):
+                g1_running_loss,g2_running_loss,d_running_loss,G2_out,G1_out = train_step(step,motion_video, keypoints,base_img,
+                    last_frame, generator_one,generator_two,discriminator, L1_criterion, BCE_criterion, 
+                        gen_train_op1,gen_train_op2,dis_train_op1, device, epoch + 1)
+                writer.add_scalar('G1_loss', g1_running_loss, iteration)
+                writer.add_scalar('G2_loss', g2_running_loss, iteration)
+                writer.add_scalar('D_loss', d_running_loss, iteration)
+                writer.add_image('G2_5', G2_out[0,5,:,:,:], iteration)
+                writer.add_image('G2_10', G2_out[0,10,:,:,:], iteration)
+                writer.add_image('G2_15', G2_out[0,15,:,:,:], iteration)
+                writer.add_image('label_15', motion_video[0,15,:,:,:], iteration)
+                writer.add_image('G2_17', G2_out[0,17,:,:,:], iteration)
+                writer.add_image('G2_25', G2_out[0,25,:,:,:], iteration)
+                writer.add_image('G1_15', G1_out[0,15,:,:,:], iteration)
+                iteration += 1
+            if epoch%10 == 0:
+                save_image(make_grid(G2_out[0,:,:,:,:],nrow=10),IMAGE_PATH + "G2.png",nrow=1)
+                save_image(make_grid(motion_video[0,:,:,:,:],nrow=10),IMAGE_PATH + "labels.png",nrow=1)
+    else:
+        motion_video, keypoints,base_img,last_frame = next(iter(train_loader))
+        evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generator_two,device)
 
-    print('\nStart training generator1')
-    for epoch in range(50):  # TODO decide epochs
-        print('-----------------Epoch = %d-----------------' % (epoch + 1))
-        generator_one = generator_one.train()
-        generator_two = generator_two.train()
-        discriminator = discriminator.train()
-        for step, (motion_video, keypoints,base_img,last_frame) in enumerate(tqdm(train_loader)):
-            g1_running_loss,g2_running_loss,d_running_loss,G2_out,G1_out = train_step(step,motion_video, keypoints,base_img,
-                last_frame, generator_one,generator_two,discriminator, L1_criterion, BCE_criterion, 
-                    gen_train_op1,gen_train_op2,dis_train_op1, device, epoch + 1)
-            writer.add_scalar('G1_loss', g1_running_loss, iteration)
-            writer.add_scalar('G2_loss', g2_running_loss, iteration)
-            writer.add_scalar('D_loss', d_running_loss, iteration)
-            writer.add_image('G2_5', G2_out[0,5,:,:,:], iteration)
-            writer.add_image('G2_10', G2_out[0,10,:,:,:], iteration)
-            writer.add_image('G2_15', G2_out[0,15,:,:,:], iteration)
-            writer.add_image('label_15', motion_video[0,15,:,:,:], iteration)
-            writer.add_image('G2_17', G2_out[0,17,:,:,:], iteration)
-            writer.add_image('G2_25', G2_out[0,25,:,:,:], iteration)
-            writer.add_image('G1_15', G1_out[0,15,:,:,:], iteration)
-            iteration += 1
-        if epoch%10 == 0:
-            save_image(make_grid(G2_out[0,:,:,:,:],nrow=10),IMAGE_PATH + "G2.jpg",nrow=1)
-            save_image(make_grid(motion_video[0,:,:,:,:],nrow=10),IMAGE_PATH + "labels.jpg",nrow=1)
         
 
+def evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generator_two,device,batch_size=10,q=18,p=128,T=10):
+    base_img = base_img.to(device)
+    keypoints = keypoints.type(torch.FloatTensor)
+    keypoints = keypoints.to(device)
+    motion_video = motion_video.to(device)
+    last_frame = last_frame.to(device)
+
+    prev_keypoints = keypoints[:,:T]
+    post_keypoints = keypoints[:,T*2:T*3]
+
+
+    z = torch.rand((batch_size,p)).to(device)
+
+    G1 = generator_one(base_img,last_frame,prev_keypoints,post_keypoints,z)
+
+    DiffMap = generator_two(G1,base_img)
+    G2 = G1 + DiffMap
+    '''
+    save_image(make_grid(G2[0,:,:,:,:],nrow=10),IMAGE_PATH + "G2_0.png",nrow=1)
+    save_image(make_grid(motion_video[0,:,:,:,:],nrow=10),IMAGE_PATH + "labels_0.png",nrow=1)
+    save_image(make_grid(G2[1,:,:,:,:],nrow=10),IMAGE_PATH + "G2_1.png",nrow=1)
+    save_image(make_grid(motion_video[1,:,:,:,:],nrow=10),IMAGE_PATH + "labels_1.png",nrow=1)
+    save_image(make_grid(G2[2,:,:,:,:],nrow=10),IMAGE_PATH + "G2_2.png",nrow=1)
+    save_image(make_grid(motion_video[2,:,:,:,:],nrow=10),IMAGE_PATH + "labels_2.png",nrow=1)
+    save_image(make_grid(G2[3,:,:,:,:],nrow=10),IMAGE_PATH + "G2_3.png",nrow=1)
+    save_image(make_grid(motion_video[3,:,:,:,:],nrow=10),IMAGE_PATH + "labels_3.png",nrow=1)
+    save_image(make_grid(G2[4,:,:,:,:],nrow=10),IMAGE_PATH + "G2_4.png",nrow=1)
+    save_image(make_grid(motion_video[4,:,:,:,:],nrow=10),IMAGE_PATH + "labels_4.png",nrow=1)
+    save_image(make_grid(G2[5,:,:,:,:],nrow=10),IMAGE_PATH + "G2_5.png",nrow=1)
+    save_image(make_grid(motion_video[5,:,:,:,:],nrow=10),IMAGE_PATH + "labels_5.png",nrow=1)
+    '''
+    
+    for b in range(10):
+        batch_img = G2[b,:,:,:,:]
+        batch_label = motion_video[b,:,:,:,:]
+        for t in range(3*T):
+            save_image(batch_img[t,:,:,:],IMAGE_PATH +"%d/"%b+"G2_%d.png"%t,nrow=1)
+            save_image(batch_label[t,:,:,:],IMAGE_PATH +"%d_label/"%b+"label_%d.png"%t,nrow=1)
 
 
 def main():
