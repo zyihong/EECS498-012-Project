@@ -426,7 +426,7 @@ class Decoder(nn.Module):
         #encoder out: (N,256,8,8)
         #noise z : (N,p,8,8)
         #input size:(N,512+p,8,8)
-        self.conv6 = nn.Conv2d(256*3+p,256,kernel_size,padding=1)
+        self.conv6 = nn.Conv2d(256*2+p,256,kernel_size,padding=1)
         self.bn6 = nn.BatchNorm2d(256)
         #LeakyReLU
         self.upsample = nn.Upsample(scale_factor=upsample_size, mode='bilinear')
@@ -450,11 +450,11 @@ class Decoder(nn.Module):
         self.conv10 = nn.Conv2d(64,3,kernel_size,padding=1)
         #Tanh
         
-    def forward(self,lstm_out,z,encoder_out_1,encoder_out_2):
+    def forward(self,lstm_out,z,encoder_out):
         #z - tiling noise size(p*8*8)
         #lstm_out:(N,512+P,8,8)
         
-        decoder_input = torch.cat((lstm_out,encoder_out_1,encoder_out_2,z),1)
+        decoder_input = torch.cat((lstm_out,encoder_out,z),1)
         u1 = self.conv6(decoder_input)
         u1 = self.bn6(u1)
         u1 = F.leaky_relu(u1)
@@ -518,20 +518,20 @@ class Generator1(nn.Module):
         self.fc_q = nn.Linear(q,q)
         
         #ConvLSTM(input_size,input_dim,hidden_dim,kernel_size,num_layer)
-        self.lstm = BDClstm((8,8), q, 256, (3,3), 1)
+        self.lstm = ConvLSTM((8,8), q, 256, (3,3), 1)
         
         self.decode = Decoder(p,kernel_size,upsample_size=2)
         
         
-    def forward(self,first_frame,last_frame,prev_keypoints,post_keypoints,z):
-        N,T,_ = prev_keypoints.size()
+    def forward(self,first_frame,keypoints,z):
+        N,T,_ = keypoints.size()
         
-        middle_tensor = torch.zeros(N,T,self.num_keypoints).cuda()
-        input_tensor = torch.cat((prev_keypoints,middle_tensor,post_keypoints),dim=1)
+        #middle_tensor = torch.zeros(N,T,self.num_keypoints).cuda()
+        #input_tensor = torch.cat((prev_keypoints,middle_tensor,post_keypoints),dim=1)
         #(N,3*T,q)
         
         #tile y_v
-        q = self.fc_q(input_tensor)
+        q = self.fc_q(keypoints)
         keypoints = F.sigmoid(q)
         #y_v = t * q + (1-t)*q
         
@@ -544,22 +544,18 @@ class Generator1(nn.Module):
         e3_first = self.encode3(e2_first)
         e_out_first = self.encode4(e3_first)
         
-        e1_last = self.encode1(last_frame)
-        e2_last = self.encode2(e1_last)
-        e3_last = self.encode3(e2_last)
-        e_out_last = self.encode4(e3_last)
         
         
         #initial_states = []
-        forward_initial_states,backward_initial_states = [],[]
+        forward_initial_states = []
         #TODO: check if initial cell state is 0?
         #print(e_out.size())
         initial_cell = Variable(torch.zeros_like(e_out_first))
         forward_initial_states.append((e_out_first,initial_cell))
-        backward_initial_states.append((e_out_last,initial_cell))
         #print(y_v.size())
         
-        lstm_out,forward_h_out,inverted_h_out = self.lstm(3*T, keypoints, forward_initial_states,backward_initial_states)
+        lstm_out,_ = self.lstm(keypoints,forward_initial_states)
+        lstm_out = lstm_out[0]
         #lstm_out (N,3*T,256,8,8)
         
         
@@ -568,10 +564,10 @@ class Generator1(nn.Module):
         z = z.view(N,self.p,1,1).repeat(1,1,8,8)
         
         
-        decode_out = torch.zeros(N,3*T,3,64,64).cuda()
+        decode_out = torch.zeros(N,T,3,64,64).cuda()
         #decode each time step output
         for t in range(lstm_out.size()[1]):
-            decode_out[:,t,:,:,:] = self.decode(lstm_out[:,t,:,:,:],z,e_out_first,e_out_last)
+            decode_out[:,t,:,:,:] = self.decode(lstm_out[:,t,:,:,:],z,e_out_first)
         
         return decode_out
         

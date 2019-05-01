@@ -12,18 +12,18 @@ import time
 import os
 from torchvision.utils import save_image,make_grid
 
-MODEL_DIR = 'models-2/'
+MODEL_DIR = 'models-4/'
 TRAIN_DIR = '/home/emily/SURREAL/git_copy/surreal/video_prediction/'
 SAVE_STEP = 500
 GENERATOR_ONE_PATH = './models-2/generator_one-41-500.ckpt'
 GENERATOR_TWO_PATH = './models-2/generator_two-41-500.ckpt'
 DISCRIMINATOR_PATH = './models-2/discriminator-41-500.ckpt'
-LOAD_FROM_CHECKPOINT = True
+LOAD_FROM_CHECKPOINT = False
 IMAGE_PATH = "save_images/"
-TRAIN_OR_EVAL = 'E'
+TRAIN_OR_EVAL = 'T'
 
 def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, generator_two, discriminator, L1_criterion,
-    BCE_criterion, gen_train_op1, gen_train_op2, dis_train_op1, device, epoch,batch_size=10,q=18,p=128,T=10):
+    BCE_criterion, gen_train_op1, gen_train_op2, dis_train_op1, device, epoch,batch_size=8,q=18,p=128,T=10):
     '''
     Function for training.
     '''
@@ -34,21 +34,20 @@ def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, 
     keypoints = keypoints.type(torch.FloatTensor)
     keypoints = keypoints.to(device)
     motion_video = motion_video.to(device)
-    last_frame = last_frame.to(device)
 
     gen_train_op1.zero_grad()
     gen_train_op2.zero_grad()
     dis_train_op1.zero_grad()
 
-    prev_keypoints = keypoints[:,:T]
+    #prev_keypoints = keypoints[:,:T]
     #prev_keypoints = prev_keypoints.type(torch.FloatTensor)
-    post_keypoints = keypoints[:,T*2:T*3]
+    #post_keypoints = keypoints[:,T*2:T*3]
     #post_keypoints = post_keypoints.type(torch.FloatTensor)
 
 
     z = torch.rand((batch_size,p)).to(device)
 
-    G1 = generator_one(base_img,last_frame,prev_keypoints,post_keypoints,z)
+    G1 = generator_one(base_img,keypoints,z)
 
     g1_loss = L1_criterion(G1, motion_video)
     g1_loss.backward(retain_graph=True)
@@ -110,13 +109,13 @@ def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, 
 
 
 def train(device):
-    N =10
+    N =8
     T = 10
     q =18
     p=128
 
     dset_train = NATOPSData("videos/reshaped.hdf5","natops/data/segmentation.txt","keypoints.h5")
-    train_loader = DataLoader(dset_train, batch_size=10, shuffle=True, num_workers=1)
+    train_loader = DataLoader(dset_train, batch_size=8, shuffle=True, num_workers=1)
     
     #models
     generator_one = Generator1(N,q,p).to(device)
@@ -139,7 +138,7 @@ def train(device):
         generator_two.load_state_dict(torch.load(GENERATOR_TWO_PATH))
         discriminator.load_state_dict(torch.load(DISCRIMINATOR_PATH))
     
-    writer = SummaryWriter('plots/exps-2')
+    writer = SummaryWriter('plots/exps-4')
     iteration = 0
     if TRAIN_OR_EVAL == 'T':
         print('\nStart training generator1')
@@ -152,16 +151,12 @@ def train(device):
                 g1_running_loss,g2_running_loss,d_running_loss,G2_out,G1_out = train_step(step,motion_video, keypoints,base_img,
                     last_frame, generator_one,generator_two,discriminator, L1_criterion, BCE_criterion, 
                         gen_train_op1,gen_train_op2,dis_train_op1, device, epoch + 1)
-                writer.add_scalar('G1_loss', g1_running_loss, iteration)
-                writer.add_scalar('G2_loss', g2_running_loss, iteration)
-                writer.add_scalar('D_loss', d_running_loss, iteration)
-                writer.add_image('G2_5', G2_out[0,5,:,:,:], iteration)
-                writer.add_image('G2_10', G2_out[0,10,:,:,:], iteration)
-                writer.add_image('G2_15', G2_out[0,15,:,:,:], iteration)
-                writer.add_image('label_15', motion_video[0,15,:,:,:], iteration)
-                writer.add_image('G2_17', G2_out[0,17,:,:,:], iteration)
-                writer.add_image('G2_25', G2_out[0,25,:,:,:], iteration)
-                writer.add_image('G1_15', G1_out[0,15,:,:,:], iteration)
+                if iteration%100 == 0:
+                    writer.add_scalar('G1_loss', g1_running_loss, iteration)
+                    writer.add_scalar('G2_loss', g2_running_loss, iteration)
+                    writer.add_scalar('D_loss', d_running_loss, iteration)
+                    writer.add_video("G1_1 video", G1_out.permute(0,2,1,3,4), iteration)
+                    writer.add_video("label video", motion_video.permute(0,2,1,3,4), iteration)
                 iteration += 1
             if epoch%10 == 0:
                 save_image(make_grid(G2_out[0,:,:,:,:],nrow=10),IMAGE_PATH + "G2.png",nrow=1)
@@ -172,7 +167,7 @@ def train(device):
 
         
 
-def evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generator_two,device,batch_size=10,q=18,p=128,T=10):
+def evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generator_two,device,batch_size=8,q=18,p=128,T=10):
     base_img = base_img.to(device)
     keypoints = keypoints.type(torch.FloatTensor)
     keypoints = keypoints.to(device)
@@ -185,7 +180,7 @@ def evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generato
 
     z = torch.rand((batch_size,p)).to(device)
 
-    G1 = generator_one(base_img,last_frame,prev_keypoints,post_keypoints,z)
+    G1 = generator_one(base_img,prev_keypoints,post_keypoints,z)
 
     DiffMap = generator_two(G1,base_img)
     G2 = G1 + DiffMap
@@ -204,13 +199,13 @@ def evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generato
     save_image(make_grid(motion_video[5,:,:,:,:],nrow=10),IMAGE_PATH + "labels_5.png",nrow=1)
     '''
     
-    for b in range(10):
+    for b in range(8):
         batch_img = G2[b,:,:,:,:]
         batch_label = motion_video[b,:,:,:,:]
         for t in range(3*T):
             save_image(batch_img[t,:,:,:],IMAGE_PATH +"%d/"%b+"G2_%d.png"%t,nrow=1)
             save_image(batch_label[t,:,:,:],IMAGE_PATH +"%d_label/"%b+"label_%d.png"%t,nrow=1)
-
+    
 
 def main():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

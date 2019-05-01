@@ -111,7 +111,7 @@ class NATOPSData(Dataset):
 
     # Override to give PyTorch size of dataset
     def __len__(self):
-        return 20
+        return 7680
 
 
 def main():
