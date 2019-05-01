@@ -426,6 +426,11 @@ class Decoder(nn.Module):
         #encoder out: (N,256,8,8)
         #noise z : (N,p,8,8)
         #input size:(N,512+p,8,8)
+
+        self.s1 = Gate(2,3,256)
+        self.s2 = Gate(4,3,128)
+        self.s3 = Gate(8,3,64)
+
         self.conv6 = nn.Conv2d(256*2+p,256,kernel_size,padding=1)
         self.bn6 = nn.BatchNorm2d(256)
         #LeakyReLU
@@ -450,27 +455,37 @@ class Decoder(nn.Module):
         self.conv10 = nn.Conv2d(64,3,kernel_size,padding=1)
         #Tanh
         
-    def forward(self,lstm_out,z,encoder_out):
+    def forward(self,lstm_out,z,encoder_out,encoder_cache):
         #z - tiling noise size(p*8*8)
         #lstm_out:(N,512+P,8,8)
         
+        e3,e2,e1 = encoder_cache
         decoder_input = torch.cat((lstm_out,encoder_out,z),1)
         u1 = self.conv6(decoder_input)
         u1 = self.bn6(u1)
         u1 = F.leaky_relu(u1)
         u1 = self.upsample(u1)
+
+        s1 = self.s1(lstm_out)
+        u2 = s1*u1 + (1-s1)*e1
         
-        u2 = self.conv7(u1)
+        u2 = self.conv7(u2)
         u2 = self.bn7(u2)
         u2 = F.leaky_relu(u2)
         u2 = self.upsample(u2)
+
+        s2 = self.s2(lstm_out)
         
-        u3 = self.conv8(u2)
+        u3 = s2*u2 + (1-s2)*e2
+        
+        u3 = self.conv8(u3)
         u3 = self.bn8(u3)
         u3 = F.leaky_relu(u3)
         u3 = self.upsample(u3)
         
-        u4 = self.conv9(u3)
+        s3 = self.s3(lstm_out)
+        u4 = s3*u3 + (1-s3)*e3
+        u4 = self.conv9(u4)
         u4 = self.bn9(u4)
         u4 = F.leaky_relu(u4)
         u4 = self.conv10(u4)
@@ -480,7 +495,20 @@ class Decoder(nn.Module):
 
 # In[21]:
 
+class Gate(nn.Module):
 
+    def __init__(self, upsample_size,kernel_size,num_filters):
+        super(Gate, self).__init__()
+        self.upsample = nn.Upsample(scale_factor=upsample_size, mode='bilinear')
+        self.conv = nn.Conv2d(256,num_filters,kernel_size,padding=1)
+    def forward(self,lstm_out):
+        h = self.upsample(lstm_out)
+        
+        h = self.conv(h)
+        h = F.leaky_relu(h)
+        out = F.sigmoid(h)
+        return out
+        
 
 
 class Generator1(nn.Module):
@@ -567,7 +595,7 @@ class Generator1(nn.Module):
         decode_out = torch.zeros(N,T,3,64,64).cuda()
         #decode each time step output
         for t in range(lstm_out.size()[1]):
-            decode_out[:,t,:,:,:] = self.decode(lstm_out[:,t,:,:,:],z,e_out_first)
+            decode_out[:,t,:,:,:] = self.decode(lstm_out[:,t,:,:,:],z,e_out_first,(e1_first,e2_first,e3_first))
         
         return decode_out
         
