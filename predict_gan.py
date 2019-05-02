@@ -503,6 +503,111 @@ class Appearance_D(nn.Module):
 # In[11]:
 
 
+class Motion_D(nn.Module):
+
+    def __init__(self,q,num_classes,kernel_size=4):
+        super(Motion_D, self).__init__()
+        #input y_a (3*64*64) 
+        #y_l (c*4*4) ??
+        #x (3*64*64)
+        self.q = q
+        self.encoder1 = nn.Sequential(
+            nn.Conv2d(3,64,kernel_size,stride=2,padding=1),
+            nn.LeakyReLU(),
+            nn.Conv2d(64,128,kernel_size,stride=2,padding=1),
+            nn.BatchNorm2d(128,affine=False),
+            nn.LeakyReLU())
+        self.encoder2 = nn.Sequential(
+            nn.Conv2d(128,256,kernel_size,stride=2,padding=1),
+            nn.BatchNorm2d(256,affine=False),
+            nn.LeakyReLU())
+        
+        #ConvLSTM(input_size,input_dim,hidden_dim,kernel_size,num_layer)
+        self.lstm = ConvLSTM((8,8), 256, 256, (3,3), 1)
+        
+        #last hidden state h_out (N*256*8*8)
+        self.conv4 = nn.Conv2d(256,64,kernel_size,stride=2,padding=1)
+        self.bn4 = nn.BatchNorm2d(64,affine=False)
+        #LeakyRelu -> flatten
+        self.fc_h1 = nn.Linear(1024,64)
+        self.bn_fc1 = nn.BatchNorm1d(64,affine=False)
+        #LeakyRelu
+        self.fc_h2 = nn.Linear(64,num_classes)
+        self.bn_fc2 = nn.BatchNorm1d(num_classes,affine=False)
+        #LeakyRelu -> softmax
+        
+        #output: ot (N,256,8,8)
+        self.conv6 = nn.Conv2d(256,64,kernel_size,stride=2,padding=1)
+        self.bn6 = nn.BatchNorm2d(64,affine=False)
+        #leakyRelu -> flatten
+        self.fc_o = nn.Linear(1024,q)
+        
+        #concatenate y_l (c*4*4) + (64*4*4) = (c+64,4,4)
+        self.conv5 = nn.Conv2d(num_classes+64,64,kernel_size,stride=2)
+        self.bn5 = nn.BatchNorm1d(64,affine=False)
+        #leakyrelu
+        self.fc_y = nn.Linear(64,1)
+        #sigmoid
+        
+        #TODO forward
+    def forward(self,x,y_a,y_l):
+        N = x.size()[0]
+        T = x.size()[1]
+        # x (N,T,3,64,64)
+        # y_a (N,3,64,64)
+        #y_l = (N,C)
+        x = x.view(-1,3,64,64)
+        
+        x_encoded_1 = self.encoder1(x)
+        layer1_out = x_encoded_1.view(N,T,128,16,16)
+        x_encoded = self.encoder2(x_encoded_1)
+
+        y_encoded_1 = self.encoder1(y_a)
+        y_encoded = self.encoder2(y_encoded_1)
+        
+        x_encoded = x_encoded.view(N,T,256,8,8)
+        
+        initial_states = []
+        #TODO: check if initial cell state is 0?
+        initial_cell = Variable(torch.zeros_like(y_encoded)).cuda()
+        initial_states.append((y_encoded,initial_cell))
+        
+        
+        o,h_last = self.lstm(x_encoded, initial_states)
+        o = o[0]
+        h_last = h_last[0]
+        
+        h_out = self.conv4(h_last)
+        h_out = self.bn4(h_out)
+        h_out = F.leaky_relu(h_out)
+        
+        #print('h_out shape',h_out.size())
+        l_out = h_out.view(N,-1)
+        l_out = self.fc_h1(l_out)
+        l_out = self.bn_fc1(l_out)
+        l_out = F.leaky_relu(l_out)
+        l_out = self.fc_h2(l_out)
+        l_out = self.bn_fc2(l_out)
+        l_out = F.softmax(F.leaky_relu(l_out))
+        #y_m_l output (label predicted)
+        
+        #concatenate y_l and h_out
+        #print('yl',y_l.shape)
+        y_l = y_l.view(N,-1,1,1).repeat(1,1,4,4)
+        #print('y_l shape ', y_l.size())
+        predict = torch.cat((y_l,h_out),1)
+        #print('predict shape', predict.size())
+        predict = self.conv5(predict)
+        predict = torch.squeeze(predict)
+        #print('predict shape after squeeze',predict.size())
+        predict = self.bn5(predict)
+        predict = F.leaky_relu(predict)
+        predict = self.fc_y(predict)
+        predict_out = F.sigmoid(predict)
+        
+        return predict_out,l_out,layer1_out,x_encoded
+        
+
 class Decoder(nn.Module):
 
     def __init__(self,p,kernel_size=3,upsample_size=2):

@@ -101,19 +101,20 @@ class NATOPSData(Dataset):
         appearance_tensor = None
         appearance = motion[0]
         appearance_tensor = self.to_tensor(appearance)
-        last_frame_tensor = None
-        last_frame = motion[-1]
-        last_frame_tensor = self.to_tensor(last_frame)
 
         keypoint = torch.from_numpy(np.asarray(keypoint))
 
-        return motion_tensor, keypoint,appearance_tensor,last_frame_tensor
+        l = np.zeros(24)
+        l[gesture_idx] = 1
+        l = torch.from_numpy(l)
+
+        return motion_tensor, keypoint,appearance_tensor,l
 
     # Override to give PyTorch size of dataset
     def __len__(self):
         return 7680
 
-
+'''
 def main():
     batch_size = 2
     dset_train = NATOPSData(FOLDER_DIR+VIDEO_DATASET,FOLDER_DIR+SEG_PATH,FOLDER_DIR+KEYPOINTS)
@@ -155,4 +156,4 @@ def main():
         plt.close()
 if __name__ == '__main__':
     main()
-
+'''
