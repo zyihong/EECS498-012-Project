@@ -414,7 +414,92 @@ class Discriminator(nn.Module):
         return output
       
 
+class Appearance_D(nn.Module):
 
+    def __init__(self,kernel_size=4):
+        super(Appearance_D, self).__init__()
+        #network 1
+        self.network1_l1 = nn.Sequential(
+            nn.Conv2d(3,64,kernel_size,stride=2,padding=1),
+            nn.BatchNorm2d(64,affine=False),
+            nn.LeakyReLU())
+        self.network1_l2 = nn.Sequential(
+            nn.Conv2d(64,128,kernel_size,stride=2,padding=1),
+            nn.BatchNorm2d(128,affine=False),
+            nn.LeakyReLU())
+        self.network1_l3 = nn.Sequential(
+            nn.Conv2d(128,256,kernel_size,stride=2,padding=1),
+            nn.BatchNorm2d(256,affine=False),
+            nn.LeakyReLU())
+        
+        #network 2
+        #input to 2: (256*4,8,8)
+        
+        self.network2 = nn.Sequential(
+            nn.ConvTranspose2d(256*4,256,3,padding=1),
+            nn.BatchNorm2d(256,affine=False),
+            nn.LeakyReLU(),      
+            nn.Conv2d(256,512,kernel_size,stride=2,padding=1),
+            nn.BatchNorm2d(512,affine=False),
+            nn.LeakyReLU(),
+            nn.Conv2d(512,1024,kernel_size,stride=4),
+            nn.BatchNorm2d(1024,affine=False),
+            nn.LeakyReLU())
+        self.fc = nn.Sequential(
+            nn.Linear(1024,64),
+            nn.LeakyReLU(),
+            nn.Linear(64,1),
+            nn.Sigmoid())
+      
+    def forward(self,x,y_a):
+        '''
+        -input x(N,T,3,64,64)
+               y(N,1,3,64,64)
+        -output predictions torch tensor of (N)
+        '''
+        N,T,_,_,_ = x.size()
+
+        y_out = self.network1_l1(y_a) #(N,256,8,8)
+        y_out = self.network1_l2(y_out) #(N,256,8,8)
+        y_out = self.network1_l3(y_out) #(N,256,8,8)
+        
+        #print(y_out.size())
+        predictions = torch.zeros(N,T-3).cuda()
+        layer1_out = torch.zeros(N,T-3,64,32,32).cuda()
+        layer2_out = torch.zeros(N,T-3,128,16,16).cuda()
+        for t in range(T-3):
+            #x_temp (N,3,64,64)
+            x_temp_1 = x[:,t,:,:,:]
+            x_temp_2 = x[:,t+1,:,:,:]
+            x_temp_3 = x[:,t+2,:,:,:]
+            x_in = torch.cat((x_temp_1,x_temp_2,x_temp_3),0)
+            #x_in (3*N,3,64,64)
+
+            x_out_1 = self.network1_l1(x_in) #(3*N,256,8,8)
+            layer1_out[:,t,:,:,:] = x_out_1[:N]
+            x_out_2 = self.network1_l2(x_out_1)
+            layer2_out[:,t,:,:,:] = x_out_2[:N]
+            
+            x_out = self.network1_l3(x_out_2)
+            #print(x_out.size())
+            x_out_1 = x_out[:N]
+            x_out_2 = x_out[N:2*N]
+            x_out_3 = x_out[2*N:3*N]
+            
+            #print("sizes", x_out_1.size(), x_out_2.size(), x_out_3.size(), y_out.size())
+
+            x_1 = torch.cat((x_out_1,x_out_2,x_out_3,y_out),1) #(N,256*4,8,8)
+            x_2 = self.network2(x_1)
+            
+            x_2 = torch.squeeze(x_2) #(N,1024)
+            out = self.fc(x_2) #(N,1)
+            predictions[:,t] = torch.squeeze(out)
+            
+        predictions = torch.mean(predictions,1)
+        #prediction is the average across all time steps
+            
+        return predictions,layer1_out,layer2_out
+        
 # In[11]:
 
 

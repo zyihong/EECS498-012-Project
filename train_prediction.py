@@ -4,7 +4,7 @@ import torch.optim as optim
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
-from predict_gan import Generator2,Discriminator,Generator1
+from predict_gan import Generator2,Appearance_D,Generator1
 from torch.utils.data import DataLoader
 from prediction_loader import NATOPSData
 from tensorboardX import SummaryWriter
@@ -12,14 +12,14 @@ import time
 import os
 from torchvision.utils import save_image,make_grid
 
-MODEL_DIR = 'models-6/'
+MODEL_DIR = 'models-7/'
 TRAIN_DIR = '/home/emily/SURREAL/git_copy/surreal/video_prediction/'
 SAVE_STEP = 500
-GENERATOR_ONE_PATH = './models-2/generator_one-41-500.ckpt'
-GENERATOR_TWO_PATH = './models-2/generator_two-41-500.ckpt'
-DISCRIMINATOR_PATH = './models-2/discriminator-41-500.ckpt'
+GENERATOR_ONE_PATH = './models-5/generator_one-10-1000.ckpt'
+GENERATOR_TWO_PATH = './models-5/generator_two-10-1000.ckpt'
+DISCRIMINATOR_PATH = './models-5/discriminator-10-1000.ckpt'
 LOAD_FROM_CHECKPOINT = False
-IMAGE_PATH = "save_images/"
+IMAGE_PATH = "save_images/v7/"
 TRAIN_OR_EVAL = 'T'
 
 def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, generator_two, discriminator, L1_criterion,
@@ -59,29 +59,15 @@ def train_step(step,motion_video, keypoints,base_img,last_frame, generator_one, 
     
     g1_loss,g2_loss,d_loss = 0,0,0
 
-    #Discriminator
-    for t in range(T*3):
-        triplet = torch.cat([motion_video[:,t,:,:,:], G1[:,t,:,:,:], base_img], dim=0)
-        #print("triplet",triplet.size())
-        D_z = discriminator(triplet)
-        D_z = torch.clamp(D_z, 0.0, 1.0)
-        # print('DZ',D_z.size())
-        D_z_pos_x_target, D_z_neg_g2, D_z_neg_x = torch.split(D_z,batch_size) #batch size
-        D_z_pos = D_z_pos_x_target
-        D_z_neg = torch.cat([D_z_neg_g2, D_z_neg_x], 0)
-        
-        #Generator 2 loss
-        g1_loss += BCE_criterion(D_z_neg, torch.ones((2*batch_size,1)).cuda())
-        #g2_loss = BCE_criterion(D_z_neg, torch.ones((10))) #2*batch size
-        PoseMaskLoss1 = L1_criterion(G1[:,t,:,:,:],motion_video[:,t,:,:,:])
-        g1_loss += 50*PoseMaskLoss1
+    s_r_a,r_l1_a,r_l2_a = discriminator(motion_video,base_img)
+    s_f_a,f_l1_a,f_l2_a = discriminator(G1,base_img)
+    d_loss += BCE_criterion(s_r_a, torch.ones((batch_size,1)).cuda())
+    d_loss += BCE_criterion(s_f_a, torch.zeros((batch_size,1)).cuda())
 
-        #discriminator loss
-        d_loss += BCE_criterion(D_z_pos, torch.ones((batch_size,1)).cuda())
-        d_loss += BCE_criterion(D_z_neg, torch.zeros((batch_size*2,1)).cuda())
-        #d_loss = BCE_criterion(D_z_pos, torch.ones((5)))
-        #d_loss += BCE_criterion(D_z_neg, torch.zeros((10)))
-        d_loss /= 2
+    g1_loss += BCE_criterion(s_f_a, torch.ones((batch_size,1)).cuda())
+    PoseMaskLoss1 = L1_criterion(G1,motion_video)
+    g1_loss += 50*PoseMaskLoss1
+
 
     g1_loss.backward(retain_graph=True)
     gen_train_op1.step()
@@ -120,7 +106,7 @@ def train(device):
     #models
     generator_one = Generator1(N,q,p).to(device)
     generator_two = Generator2().to(device)
-    discriminator = Discriminator().to(device)
+    discriminator = Appearance_D().to(device)
 
     #loss functions
     #criterion = nn.L1Loss()  # TODO decide loss
@@ -138,7 +124,7 @@ def train(device):
         generator_two.load_state_dict(torch.load(GENERATOR_TWO_PATH))
         discriminator.load_state_dict(torch.load(DISCRIMINATOR_PATH))
     
-    writer = SummaryWriter('plots/exps-6')
+    writer = SummaryWriter('plots/exps-7')
     iteration = 0
     if TRAIN_OR_EVAL == 'T':
         print('\nStart training generator1')
@@ -185,7 +171,7 @@ def evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generato
 
     z = torch.rand((batch_size,p)).to(device)
 
-    G1 = generator_one(base_img,prev_keypoints,post_keypoints,z)
+    G1 = generator_one(base_img,keypoints,z)
 
     DiffMap = generator_two(G1,base_img)
     G2 = G1 + DiffMap
@@ -204,8 +190,8 @@ def evaluate(motion_video, keypoints,base_img,last_frame, generator_one,generato
     save_image(make_grid(motion_video[5,:,:,:,:],nrow=10),IMAGE_PATH + "labels_5.png",nrow=1)
     '''
     
-    for b in range(batch_sizes):
-        batch_img = G2[b,:,:,:,:]
+    for b in range(batch_size):
+        batch_img = G1[b,:,:,:,:]
         batch_label = motion_video[b,:,:,:,:]
         for t in range(3*T):
             save_image(batch_img[t,:,:,:],IMAGE_PATH +"%d/"%b+"G2_%d.png"%t,nrow=1)
