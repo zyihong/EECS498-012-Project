@@ -163,12 +163,14 @@ def train(device):
                     writer.add_scalar('G1_loss_cross_entropy',g_cross_entropy_loss , iteration)
                     writer.add_scalar('D_a_loss', d_a_running_loss, iteration)
                     writer.add_scalar('D_m_loss', d_m_running_loss, iteration)
+                    G1_out_video = G1_out.permute(0,2,1,3,4)
                     writer.add_image('G1 image', G1_out[0,15,:,:,:], iteration)
                     print('G1_size', G1_out.size())
                     writer.add_video("G1 single video", G1_out[0,:,:,:,:].view(1,30,3,64,64),iteration)
-                    writer.add_video("G1_1 video", G1_out, iteration)
+                    writer.add_video("G1_1 video", G1_out_video, iteration)
 
-                    writer.add_video("label video", motion_video, iteration)
+                    motion_video_ = motion_video.permute(0,2,1,3,4)
+                    writer.add_video("label video", motion_video_, iteration)
                 iteration += 1
             if epoch%10 == 0:
                 save_image(make_grid(G1_out[0,:,:,:,:],nrow=10),IMAGE_PATH + "G2.png",nrow=1)
